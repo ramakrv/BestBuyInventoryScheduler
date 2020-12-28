@@ -1,5 +1,5 @@
 # BestBuyInventoryScheduler
-Inventory scheduler
+Inventory scheduler project assignment
 ## System Specifications
 	1. R Version = R version 4.0.3 (2020-10-10)
 	2. OS: Windows
@@ -15,7 +15,7 @@ Inventory scheduler
 	7. Based on the above two assumptions, Orders are forecasted to guide Inventory Analysts, since it has direct relation with product availability.
 	8. Selection of models generally depends on its performance on cross-validation in validation environment, given the POC nature of analysis, models are selected based on the forecasted trend.
 	9. Price is not considered for the analysis, but it plays significant role in converting views to orders. It is based on product also. without having 
-		business knowledge, using price as a feature is not good option
+		business knowledge, using price as a feature is not a good option
 
 ## Functional WorkFlow
 	1. Load the data in to environment
@@ -27,7 +27,8 @@ Inventory scheduler
 	7. Based on the forecast, Inventory needed to be replenished is estimated
 	8. Plot and save results
 ## Code WorkFlow
-### Auxiliary Functions
+### Auxiliary Functions\
+ 	Below codes have functions which help us to do the analysis for the given problem
 	1.  requirements.R :Loading libraries in to the environment
 	2.  DataUtils.R :plotForecastErrors,  trendplot,  forecasttrendplot,  loadtestdata, loaddata, AddExternalVariables
   	3.  ModelFunctions.R :ForecastForNextDay,  FitGlmnet,  FItGlmnet.pois,  Fitearth,  Fitrpart,,  Fitrf,,  FitProphet,  FitETS,,  FitNNET,,  FitXGBoost,  FitAutoArima,  FitHoltWinters
@@ -35,9 +36,9 @@ Inventory scheduler
 	1. Consists of calling all the auxiliary functions to have outputs of different forecasting models
 	
 ### Running the code
-1. Have data with given column Names (week	product	orders	brand	views	cart_adds	price	inventory)
-2. Have external variables with column names like (EventType	From	To)
-3. Open cmd in windows and run the below command to run the code
+1. Have data with given column Names (week,	product,	orders,	brand,	views,	cart_adds,	price,	inventory)
+2. Have external variables with column names like (EventType,	From,	To)
+3. Open cmd in windows and run the below command to run the code ( Must need : R & internet connection to install required packages)
 
 >Rscript <config.R filepath> <InputFilePath>   <TestForecastUnits>   <DMNumberOfLags> 	<BufferInventory> 	<MinimumOrderQuantity>  <ExternalEventpath>
 
