@@ -46,13 +46,13 @@ Rscript <config.R filepath> <InputFilePath>  <TestForecastUnits>   <DMNumberOfLa
 ```
 ### Example
 
-  InputFilePath = "..../DataScienceAssignment.xlsx"
-  Product = "A"
-  TestForecastUnits = 16
-  DMNumberOfLags = 8
-  BufferInventory = 0.3
-  MinimumOrderQuantity = 50
-  ExtEventPath = "..../HolidayData.csv"
+  1. InputFilePath = "..../DataScienceAssignment.xlsx"
+  2. Product = "A"
+  3. TestForecastUnits = 16
+  4. DMNumberOfLags = 8
+  5. BufferInventory = 0.3
+  6. MinimumOrderQuantity = 50
+  7. ExtEventPath = "..../HolidayData.csv"
 
   
 ## Outputs
