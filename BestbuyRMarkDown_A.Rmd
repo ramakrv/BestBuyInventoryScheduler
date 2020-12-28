@@ -1,0 +1,860 @@
+---
+title: "TimeSeriesBestBuy"
+output:
+  pdf_document: default
+  html_document: default
+author: "RamaKrishna"
+date: "22/12/2020"
+fig_width: 15
+fig_height: 10
+---
+
+```{r}
+
+InputFilePath = "E:/GIT_SBUInsights/COE/BestBuy/Data/DataScienceAssignment.xlsx"
+TestForecastUnits = 16
+DMNumberOfLags = 8
+BufferInventory = 0.3
+MinimumOrderQuantity = 50
+
+```
+
+## Introduction
+
+This document covers the exploratory analysis done on the bestbuy data. Below are the key important steps to understand the data better
+1. Understand the business objective
+2. Load the Data and understand basic characteristics of data
+3. Understand each column in the data like frequency distribution, classes in the column
+4. Take a set of parameters and subset the data to run through the analysis
+5. Get the general trend of the data and also the linear regression line of the data
+6. Check the Stationarity of the data and if it fails use appropriate methods to stationarize ( Duck Fuller test)
+7. Check the auto correlation in the data
+8. Once data is correct apply time series models and validate models to understand which algorithm works well for the data
+9. Plot the results 
+
+## Loading data and understanding its basic composition.
+We are loading the data from the device. And then we are tyring to look at unique combinations, which are the combination in which data is being utilised in the reports( exmaple: weekly, daily, yearly for a consumer/commercial) by the business. 
+
+Functions to validate the existing data
+
+```{r}
+plotForecastErrors <- function(forecasterrors){
+  # make a histogram of the forecast errors:
+  mybinsize <- IQR(forecasterrors)/4
+  mysd   <- sd(forecasterrors)
+  mymin  <- min(forecasterrors) - mysd*5
+  mymax  <- max(forecasterrors) + mysd*3
+  # generate normally distributed data with mean 0 and standard deviation mysd
+  mynorm <- rnorm(10000, mean=0, sd=mysd)
+  mymin2 <- min(mynorm)
+  mymax2 <- max(mynorm)
+  if (mymin2 < mymin) { mymin <- mymin2 }
+  if (mymax2 > mymax) { mymax <- mymax2 }
+  # make a red histogram of the forecast errors, with the normally distributed data overlaid:
+  mybins <- seq(mymin, mymax, mybinsize)
+  hist(forecasterrors, col="red", freq=FALSE, breaks=mybins)
+  # freq=FALSE ensures the area under the histogram = 1
+  # generate normally distributed data with mean 0 and standard deviation mysd
+  myhist <- hist(mynorm, plot=FALSE, breaks=mybins)
+  # plot the normal curve as a blue line on top of the histogram of forecast errors:
+  points(myhist$mids, myhist$density, type="l", col="blue", lwd=2)
+}
+
+
+```
+
+First we will load the libraries in to the R Environment.
+
+```{r}
+
+library(pastecs, quietly = TRUE, warn.conflicts = FALSE)
+library(httr, quietly = TRUE, warn.conflicts = FALSE)
+library(datasets, quietly = TRUE, warn.conflicts = FALSE)
+library(forecast, quietly = TRUE, warn.conflicts = FALSE)
+library(stats, quietly = TRUE, warn.conflicts = FALSE)
+library(openxlsx, quietly = TRUE, warn.conflicts = FALSE)
+#library(xlsx, quietly = TRUE, warn.conflicts = FALSE)
+library(Hmisc, quietly = TRUE, warn.conflicts = FALSE)
+library(DT, quietly = TRUE, warn.conflicts = FALSE)
+library(data.table, quietly = TRUE, warn.conflicts = FALSE)
+library(zoo, quietly = TRUE, warn.conflicts = FALSE)
+#library(rCharts, quietly = TRUE, warn.conflicts = FALSE)
+library(reshape2, quietly = TRUE, warn.conflicts = FALSE)
+library(ggplot2, quietly = TRUE, warn.conflicts = FALSE)
+library(nnet, quietly = TRUE, warn.conflicts = FALSE)
+library(tseries, quietly = TRUE, warn.conflicts = FALSE)
+library(astsa, quietly = TRUE, warn.conflicts = FALSE)
+library(xgboost, quietly = TRUE, warn.conflicts = FALSE)
+library(keras, quietly = TRUE, warn.conflicts = FALSE)
+library(tensorflow, quietly = TRUE, warn.conflicts = FALSE)
+dirpath = "E:/Git_SBUInsights/COE/BestBuy/Output/ProductA/"
+```
+
+#Load the  weekly data and look at its structure
+
+
+``` {R}
+
+#read the Dataset sheet into “R”. The dataset will be called "data".
+
+rawdata <- read.xlsx(InputFilePath)
+colnames(rawdata) = c('Date', 'Product', 'Orders', 'Brand','Views', 'Cart_Adds', 'Price', 'Inventory')
+rawdata$Date = as.Date(as.character(rawdata$Date), format = "%m/%d/%Y")
+paste0("Duration of the Data is from  ",min(rawdata$Date), " to ",max(rawdata$Date))
+str(rawdata)
+```
+
+
+## Adding external impact variables
+
+```{R}
+rawdata$BlackFridayWeeks = 0
+rawdata$BlackFridayWeeks[(rawdata$Date>=as.Date("11/16/2020", format = "%m/%d/%Y")) & (rawdata$Date <= as.Date("12/1/2020", format = "%m/%d/%Y") )] = 1
+
+rawdata$WinterSeason = 0
+rawdata$WinterSeason[rawdata$Date>=as.Date("01/01/2020", format = "%m/%d/%Y") & rawdata$Date <= as.Date("03/15/2020", format = "%m/%d/%Y") ] = 1
+
+rawdata$HolidayWeek = 0
+rawdata$HolidayWeek[rawdata$Date>=as.Date("12/22/2019", format = "%m/%d/%Y") & rawdata$Date <= as.Date("12/29/2019", format = "%m/%d/%Y") ] = 1
+
+rawdata$BackToSchool = 0
+rawdata$BackToSchool[rawdata$Date>=as.Date("08/16/2020", format = "%m/%d/%Y") & rawdata$Date <= as.Date("09/27/2020", format = "%m/%d/%Y") ] = 1
+
+rawdata$Spring = 0
+rawdata$Spring[rawdata$Date>=as.Date("04/05/2020", format = "%m/%d/%Y") & rawdata$Date <= as.Date("05/17/2020", format = "%m/%d/%Y") ] = 1
+
+
+```
+
+## Unique Combinations of the data aand also convert the Date variable to R Date format
+
+```{R}
+
+
+dataA = rawdata[rawdata$Product=="A",]
+
+
+
+
+```
+
+```{R echo = FALSE}
+getStats = function(column1,column2){
+  if( length(column1) == length(column2)){
+    diff = abs(column1 - column2)
+    return(print(stat.desc(diff)))
+  }
+  else{
+    return(print("Length of the two columns are not equal"))
+  }
+  
+}
+
+print("Descriptive Stats on different products \n\n\n")
+stat.desc(dataA$Orders)
+stat.desc(dataB$Orders)
+stat.desc(dataC$Orders)
+stat.desc(dataD$Orders)
+stat.desc(dataE$Orders)
+
+
+print("Descriptive Stats to identify the closeness of products \n\n\n")
+# getStats(dataA$Orders,dataB$Orders)
+# getStats(dataA$Orders,dataC$Orders)
+# getStats(dataA$Orders,dataD$Orders)
+# getStats(dataB$Orders,dataC$Orders)
+# getStats(dataB$Orders,dataD$Orders)
+# getStats(dataC$Orders,dataD$Orders)
+```
+
+## Trend line for the data
+
+
+```{R}
+
+trendPlot = function(data,x = "Date",y = "Orders",TrendTitle,plotfilename){
+  
+    filePath = paste(dirpath,plotfilename,".png",sep="")
+    # Area plot
+    plot = ggplot(data, aes(x = eval(parse(text=x)), y = eval(parse(text=y)))) + 
+      geom_line(alpha = 0.8, position = position_dodge(0.8),colour= "green",size = 1) +
+      ggtitle(TrendTitle)+xlab(x) + ylab(y) + theme(legend.title =element_blank())+
+      ggsave(filePath,plot = last_plot(), dpi = 600,limitsize = TRUE,height = 7 , width = 7 * 1.5)
+      return(print(plot))
+}
+
+
+  
+trendPlot(dataA,x = "Date",y = "Orders" ,paste("Trend Line for Product_A"),"Product_A")
+trendPlot(dataB,x = "Date",y = "Orders" ,paste("Trend Line for Product_B"),"Product_B")
+trendPlot(dataC,x = "Date",y = "Orders" ,paste("Trend Line for Product_C"),"Product_C")
+trendPlot(dataD,x = "Date",y = "Orders" ,paste("Trend Line for Product_D"),"Product_D")
+trendPlot(dataE,x = "Date",y = "Orders" ,paste("Trend Line for Product_E"),"Product_E")
+
+```
+
+# Price factoring
+
+```{r}
+temp = dataA
+temp$OrdersToViews = round(temp$Orders/(temp$Views+1),2)
+table(temp$OrdersToViews,temp$Price)
+
+```
+
+
+
+## Displaying the linear regresion line
+
+```{R}
+# library(imputeTS)
+
+dataA$Orders[dataA$Orders==0] = NA
+x = ts(dataA$Orders,start = as.Date(min(dataA$Date)),frequency = 7)
+x_interp = na.interp(x)
+dataA$ActualOrders <- dataA$Orders
+dataA$Orders = as.numeric(x_interp)
+
+
+plot(decompose(x_interp))
+
+Box.test(x_interp, lag=8, type="Ljung-Box") # Non Stationary
+
+adf.test(x_interp)
+
+kpss.test(x_interp, null="Trend")
+
+
+plot(acf(x))
+plot(pacf(x))
+
+
+
+# x1 = tsclean(x)
+# ## IMPUTING ##
+# temp <- na.interp(x)
+# temp1 <- na.StructTS(x)
+# temp2 <- na.locf(x)
+# temp3 <- na_interpolation(x, option = "linear")
+# temp4 <- na_interpolation(x, option = "spline")
+# temp5 <- na_interpolation(x, option = "stine")
+
+
+# matplot(cbind(x,x1),type="l",)
+# matplot(cbind(temp,x1),type="l",show.legend=FALSE)
+# matplot(cbind(x,x1,temp,temp1,temp2),type="l",show.legend=FALSE)
+# matplot(cbind(temp3,temp4,temp5),type="l",show.legend=FALSE)
+
+matplot(cbind(x,x_interp),type = "l")
+
+dataA$N_Views = (dataA$Views-mean(dataA$Views,na.rm = T))/sd(dataA$Views,na.rm = T)
+dataA$N_Orders = (dataA$Orders-mean(dataA$Orders,na.rm = T))/sd(dataA$Orders,na.rm = T)
+dataA$N_Cart_Adds = (dataA$Cart_Adds-mean(dataA$Cart_Adds,na.rm = T))/sd(dataA$Cart_Adds,na.rm = T)
+
+filePath <- paste(dirpath,'AllTrends.png',sep='')
+plot = ggplot(dataA, aes(x = Date)) + 
+  geom_line(size=1,aes(y = N_Views,color = 'Views'), position = position_dodge(0.8)) +
+  geom_line(size=1,aes(y = N_Orders,color = 'Orders'), position = position_dodge(0.8)) +
+  geom_line(size=1,aes(y = N_Cart_Adds,color = 'Cart_Adds'), position = position_dodge(0.8)) +
+  ggtitle(paste('Trends of Views, Cart_Adds & Orders ( Normalised) ', collapse = '\n'))+
+  theme(plot.title = element_text(size = 16, face = 'bold',hjust = 0.5))+
+  ggsave(filePath,plot = last_plot(), dpi = 600,limitsize = TRUE,height = 10 , width = 10 * 1.5)
+
+print(plot)
+
+
+```
+
+```{r}
+tempdata = dataA[,c("Date","Orders","BlackFridayWeeks","WinterSeason","HolidayWeek","BackToSchool","Spring")]
+
+tempdata$Orders <- as.numeric(ts(tempdata$Orders,start = as.Date(min(tempdata$Date)),frequency = 7))
+tempdata$Orders <- round(tempdata$Orders,0)
+tempdata$Type = "Actual"
+
+
+testData=data.frame(Date= seq(max(tempdata$Date)+7, max(tempdata$Date)+(7*TestForecastUnits), by="week"))
+testData$Orders = 0
+testData$Date = as.Date(testData$Date)
+testData$Type = "Forecast"
+
+testData$BlackFridayWeeks = 0
+testData$BlackFridayWeeks[testData$Date>=as.Date("11/22/2021", format = "%m/%d/%Y") & testData$Date <= as.Date("12/1/2021", format = "%m/%d/%Y") ] = 1
+
+testData$WinterSeason = 0
+testData$WinterSeason[testData$Date>=as.Date("01/01/2021", format = "%m/%d/%Y") & testData$Date <= as.Date("03/01/2021", format = "%m/%d/%Y") ] = 1
+
+testData$HolidayWeek = 0
+testData$HolidayWeek[testData$Date>=as.Date("12/20/2020", format = "%m/%d/%Y") & testData$Date <= as.Date("12/27/2020", format = "%m/%d/%Y") ] = 1
+
+testData$BackToSchool = 0
+testData$BackToSchool[testData$Date>=as.Date("08/15/2021", format = "%m/%d/%Y") & testData$Date <= as.Date("09/26/2021", format = "%m/%d/%Y") ] = 1
+
+testData$Spring= 0
+testData$Spring[testData$Date>=as.Date("04/04/2021", format = "%m/%d/%Y") & testData$Date <= as.Date("05/16/2021", format = "%m/%d/%Y") ] = 1
+
+totaldata = rbind(tempdata,testData)
+totaldata[is.na(totaldata)] <- 0
+
+```
+
+
+
+```{r}
+
+fitreg  <- auto.arima(x,xreg = as.matrix(totaldata[totaldata$Type=="Actual",c("BlackFridayWeeks","WinterSeason","HolidayWeek","BackToSchool","Spring")]),trace=TRUE)
+summary(fitreg)
+predict_dataMREGArima = predict(fitreg, newxreg = as.matrix(totaldata[totaldata$Type=="Forecast",c("BlackFridayWeeks","WinterSeason","HolidayWeek","BackToSchool","Spring")]))
+
+
+totaldata$Orders[totaldata$Type=="Forecast"] = predict_dataMREGArima$pred
+filePath = paste(dirpath,"MREGArima.png",sep="")
+
+# Area plot
+plot = ggplot(totaldata, aes(x = Date, y = Orders)) + 
+  geom_line(aes(color = Type), 
+            alpha = 1, position = position_dodge(0.8)) +
+  ggtitle(paste(" MultiVariant Arima - Trend and Forecast Line for Product A ",sep=""))+
+ # scale_color_manual(Orderss = c("#00AFBB", "#E7B800")) +
+ # scale_fill_manual(Orderss = c("#00AFBB", "#E7B800")) +
+  ggsave(filePath,plot = last_plot(), dpi = 600,limitsize = TRUE,height = 7 , width = 7 * 1.5)
+print(plot)
+
+
+forecasttrendPlot = function(data,x = "Date",y = "Orders",TrendTitle ="Line Chart",plotfilename = "Chart",bycolor = "Type"){
+  
+    filePath = paste(dirpath,plotfilename,".png",sep="")
+    # Area plot
+    plot = ggplot(data, aes(x = eval(parse(text=x)), y = eval(parse(text=y)))) + 
+      geom_line(aes(color =  eval(parse(text=bycolor))),
+                alpha = 0.8, position = position_dodge(0.8),size = 1) +
+      ggtitle(TrendTitle)+xlab(x) + ylab(y) + theme(legend.title =element_blank())+
+      ggsave(filePath,plot = last_plot(), dpi = 600,limitsize = TRUE,height = 7 , width = 7 * 1.5)
+      return(print(plot))
+}
+
+forecasttrendPlot(totaldata,x = "Date",y = "Orders",TrendTitle =paste(" MultiVariant Arima - Trend and Forecast Line for Product A ",sep=""),plotfilename = "MREGArima.png",bycolor = "Type")
+
+totaldata$MAutoArima <- totaldata$Orders
+
+```
+
+
+```{r}
+HoltMod = HoltWinters(ts(totaldata$Orders[totaldata$Type =="Actual"]),beta = TRUE,gamma = FALSE)
+plot(HoltMod)
+HoltModforecasts <- predict(HoltMod,  n.ahead = TestForecastUnits)
+
+totaldata$Orders[totaldata$Type=="Forecast"] = HoltModforecasts
+
+
+forecasttrendPlot(totaldata,x = "Date",y = "Orders",TrendTitle =paste(" Holts - Trend and Forecast Line for Product A ",sep=""),plotfilename = "Holts.png",bycolor = "Type")
+
+plot(HoltMod,HoltModforecasts)
+
+totaldata$HoltWinters <- totaldata$Orders
+
+```
+
+##  ETS ( Smoothing Techniques) Forecast
+```{r}
+
+
+
+etsreg = ets(totaldata$Orders[totaldata$Type =="Actual"],model = "ZZZ",damped = NULL,lambda = "auto")
+predict_dataETS <- as.data.frame(forecast(etsreg,TestForecastUnits))
+totaldata$Orders[totaldata$Type=="Forecast"] = predict_dataETS$`Point Forecast`
+
+forecasttrendPlot(totaldata,x = "Date",y = "Orders",TrendTitle =paste("ETS - Trend and Forecast Line for dataA ",sep=""),plotfilename = "ETS.png",bycolor = "Type")
+totaldata$ETS <- totaldata$Orders
+
+```
+## Neural Net FOrecast
+```{r}
+#Non Linear Patterns
+
+nnetdata = totaldata$Orders[totaldata$Type=="Actual"] + 1
+#nnetdata = log(nnetdata)
+fitreg = nnetar(nnetdata)
+predict_datannet <- as.data.frame(forecast(fitreg,TestForecastUnits))
+#predict_datannet$`Point Forecast` <- exp(predict_datannet$`Point Forecast`)
+totaldata$Orders[totaldata$Type=="Forecast"] = predict_datannet$`Point Forecast`
+
+forecasttrendPlot(totaldata,x = "Date",y = "Orders",TrendTitle =paste("Neural Net - Trend and Forecast Line for Series for product A ",sep=""),plotfilename = "NNET.png",bycolor = "Type")
+
+totaldata$NNET <- totaldata$Orders
+```
+## Using External Variables
+
+```{r}
+totaldata1 = totaldata[,c("Date","Type","Orders","BlackFridayWeeks","WinterSeason","HolidayWeek","BackToSchool","Spring")]
+```
+
+
+## XGBoost
+
+```{r}
+xgtotaldata <- totaldata1
+xgtotaldata$Orders[xgtotaldata$Type == "Forecast"] = 0
+xgtotaldata$WeekDay <- as.POSIXlt(as.Date(xgtotaldata$Date))$wday
+xgtotaldata$MDay <- mday(as.Date(xgtotaldata$Date))
+xgtotaldata$Month = month(xgtotaldata$Date)
+AvgxgtotaldataOrders = mean(xgtotaldata$Orders[xgtotaldata$Type=="Actual"])
+xgtotaldata$Orders = xgtotaldata$Orders-AvgxgtotaldataOrders
+#xgtotaldata$Year  = year(xgtotaldata$Date)
+training_data = xgtotaldata[xgtotaldata$Type=="Actual",]
+test_data = xgtotaldata[xgtotaldata$Type=="Forecast",]
+  
+# Split data training and test data into X and Y
+  X_train = data.matrix(training_data[,c("BlackFridayWeeks","WinterSeason" ,"HolidayWeek","BackToSchool","Spring" ,"WeekDay","MDay" ,"Month")])
+  Y_train = data.matrix(training_data[,"Orders"])
+  class(X_train)[1]
+  class(Y_train)
+  
+  X_test = data.matrix(test_data[,c("BlackFridayWeeks","WinterSeason" ,"HolidayWeek","BackToSchool","Spring" ,"WeekDay","MDay" ,"Month")])
+  Y_test = data.matrix(test_data[,"Orders"])
+  class(X_test)[1]
+  class(Y_test)
+  
+  
+  # Train the xgboost model using the "xgboost" function
+  dtrain = xgb.DMatrix(data = X_train, label = Y_train)
+  xgModel = xgboost(data = dtrain, nround = 16, booster="gblinear",eta = 0.02, objective = "reg:squarederror",eval_metric  = "rmse")
+  
+  # Make the predictions on the test data
+  predict_data = predict(xgModel, X_test)
+
+  xgtotaldata$Orders[xgtotaldata$Type == "Forecast"] = predict_data
+  xgtotaldata$Orders = xgtotaldata$Orders+AvgxgtotaldataOrders
+
+
+forecasttrendPlot(totaldata,x = "Date",y = "Orders",TrendTitle =paste(" XGBoost - Trend and Forecast Line for ProductA",sep=""),plotfilename = "XGBoost.png",bycolor = "Type")
+
+
+totaldata$XGBoost <- xgtotaldata$Orders
+
+```
+# Prophet Model
+
+```{r}
+library(prophet)
+library(dplyr)
+BlackFridayWeeks <- data_frame(
+  holiday = 'BlackFriday',
+  ds = c(seq(as.Date("11/22/2020", format = "%m/%d/%Y"), as.Date("12/06/2020", format = "%m/%d/%Y"),by="week"), seq(as.Date("11/19/2021", format = "%m/%d/%Y"), as.Date("12/03/2021", format = "%m/%d/%Y"),by="week")),
+  lower_window = 0,
+  upper_window = 2
+)
+WinterSeason <- data_frame(
+  holiday = 'WinterSeason',
+  ds = c(seq(as.Date("01/01/2020", format = "%m/%d/%Y"), as.Date("03/01/2020", format = "%m/%d/%Y"),by="week"), seq(as.Date("01/01/2021", format = "%m/%d/%Y"), as.Date("03/01/2021", format = "%m/%d/%Y"),by="week")),
+  lower_window = 0,
+  upper_window = 1
+)
+
+HolidayWeek <- data_frame(
+  holiday = 'HolidayWeek',
+  ds = c(seq(as.Date("12/22/2019", format = "%m/%d/%Y"), as.Date("12/29/2019", format = "%m/%d/%Y"),by="week"), seq(as.Date("12/20/2020", format = "%m/%d/%Y"), as.Date("12/27/2020", format = "%m/%d/%Y"),by="week")),
+  lower_window = 0,
+  upper_window = 1
+)
+
+BackToSchool <- data_frame(
+  holiday = 'BackToSchool',
+  ds = c(seq(as.Date("08/15/2021", format = "%m/%d/%Y"), as.Date("09/26/2021", format = "%m/%d/%Y"),by="week"), seq(as.Date("08/16/2020", format = "%m/%d/%Y"), as.Date("09/27/2020", format = "%m/%d/%Y"),by="week")),
+  lower_window = 0,
+  upper_window = 1
+)
+
+Spring <- data_frame(
+  holiday = 'Spring',
+  ds = c(seq(as.Date("04/04/2021", format = "%m/%d/%Y"), as.Date("05/16/2021", format = "%m/%d/%Y"),by="week"), seq(as.Date("04/05/2020", format = "%m/%d/%Y"), as.Date("05/17/2020", format = "%m/%d/%Y"),by="week")),
+  lower_window = 0,
+  upper_window = 1
+)
+
+
+holidays <- bind_rows(BlackFridayWeeks, WinterSeason,HolidayWeek,BackToSchool,Spring)
+
+
+tempdata1 = totaldata[totaldata$Type =="Actual",c("Date","Orders")]
+colnames(tempdata1) = c("ds","y")
+totaldata$Prophet = totaldata$Orders
+
+future <- data.frame(ds= seq(min(tempdata$Date), max(tempdata$Date)+(7*TestForecastUnits), by="week"))
+m <- prophet(holidays = holidays)
+m <- add_country_holidays(m, country_name = 'CA')
+m <- fit.prophet(m, tempdata1)
+forecast <- predict(m, future)
+totaldata$Prophet[totaldata$Type=="Forecast"]= forecast$yhat
+plot(m,forecast)
+prophet_plot_components(m,forecast)
+forecasttrendPlot(totaldata,x = "Date",y = "Orders",TrendTitle =paste(" PROPHET - Trend and Forecast Line for ProductA",sep=""),plotfilename = "Prophet.png",bycolor = "Type")
+
+
+
+```
+
+
+```{r}
+
+
+DMNumberOfLags = 8
+
+#totaldata$WeekDay <- as.POSIXlt(as.Date(totaldata$Date))$wday
+totaldata$MDay <- mday(as.Date(totaldata$Date))
+totaldata$Month = month(totaldata$Date)
+
+totaldata$Month = as.factor(totaldata$Month)
+#totaldata$WeekDay = as.factor(totaldata$WeekDay)
+totaldata$MDay = as.factor(totaldata$MDay)
+
+for(i in 1:DMNumberOfLags) {
+  #print(i)
+  totaldata[,paste("Lag_",i,sep="")] = Lag(totaldata$Orders,i)
+} 
+
+totaldata[is.na(totaldata)] <- 0
+
+totaldata$glmnetOrders <- totaldata$Orders
+totaldata$glmnet.poisOrders <- totaldata$Orders
+totaldata$lmOrders <- totaldata$Orders
+totaldata$earthOrders <- totaldata$Orders
+totaldata$earth.poisOrders <- totaldata$Orders
+totaldata$gbmOrders <- totaldata$Orders
+totaldata$gamOrders <- totaldata$Orders
+totaldata$rfOrders <- totaldata$Orders
+totaldata$rpartOrders <- totaldata$Orders
+totaldata$partyOrders <- totaldata$Orders
+
+totaldata <- totaldata[order(totaldata$Date,decreasing = FALSE),]
+rownames(totaldata) <-NULL
+
+#totaldata <- totaldata[DMNumberOfLags+1 : nrow(totaldata),]
+
+
+DMcovariates <- c("BlackFridayWeeks","WinterSeason" ,"HolidayWeek","BackToSchool","Spring","Month","MDay","Lag_1","Lag_2","Lag_3","Lag_4","Lag_5","Lag_6","Lag_7","Lag_8")
+
+#### creating sampling seeds ####
+set.seed(123)
+seeds <- vector(mode = "list", length = (nrow(totaldata)+100))
+for(i in 1:(nrow(totaldata)+100-1)) seeds[[i]] <- sample.int(1000, 5)
+
+## For the last model:
+seeds[[(nrow(totaldata)+100)]] <- sample.int(1000, 1)
+
+library(caret)
+
+myTimeControl <- trainControl(method = "timeslice",
+                              initialWindow = 20,
+                              horizon = 4,
+                              fixedWindow = FALSE,
+                              allowParallel = TRUE,
+                              seeds = seeds)
+
+tuneLength.num <- 5
+
+```
+
+
+```{r}
+# trainData = totaldata[totaldata$Type == "Actual",]
+# testData = totaldata[totaldata$Type == "Forecast",]
+
+library(glmnet)
+
+glmnet.mod <- train(glmnetOrders ~ BlackFridayWeeks+WinterSeason+HolidayWeek+BackToSchool+Spring+Month+MDay+Lag_1+Lag_2+Lag_3+Lag_4+Lag_5+Lag_6+Lag_7+Lag_8,
+                    data = totaldata[totaldata$Type == "Actual",],
+                    method = "glmnet",
+                    family = "gaussian",
+                    trControl = myTimeControl,
+                    tuneLength=tuneLength.num)
+
+```
+
+
+```{r}
+# glmnetPredictions = predict(glmnet.mod,testData )
+# totaldata$glmnetOrders[totaldata$Type == "Forecast"] <- glmnetPredictions
+library(glmnet)
+pois.mod <- train(glmnet.poisOrders ~ BlackFridayWeeks+WinterSeason+HolidayWeek+BackToSchool+Spring+Month+MDay+Lag_1+Lag_2+Lag_3+Lag_4+Lag_5+Lag_6+Lag_7+Lag_8,
+                  data = totaldata[totaldata$Type == "Actual",],
+                  method = "glmnet",
+                  family = "poisson",
+                  trControl = myTimeControl,
+                  tuneLength=tuneLength.num)
+
+#glmnet.poisPredictions = predict(pois.mod,testData )
+# totaldata$glmnet.poisOrders[totaldata$Type == "Forecast"] <- glmnet.poisPredictions
+```
+
+```{r}
+earth.mod <- train(earthOrders ~ BlackFridayWeeks+WinterSeason+HolidayWeek+BackToSchool+Spring+Month+MDay+Lag_1+Lag_2+Lag_3+Lag_4+Lag_5+Lag_6+Lag_7+Lag_8,
+                   data = totaldata[totaldata$Type == "Actual",],
+                   method = "earth",
+                   trControl = myTimeControl,
+                   tuneLength=tuneLength.num)
+
+# earthPredictions = predict(earth.mod,testData )
+# totaldata$earthOrders[totaldata$Type == "Forecast"] <- earthPredictions
+```
+
+
+```{r}
+rpart.mod <- train(rpartOrders ~ BlackFridayWeeks+WinterSeason+HolidayWeek+Month+MDay+Lag_1+Lag_2+Lag_3+Lag_4+Lag_5+Lag_6+Lag_7+Lag_8,
+                   data = totaldata[totaldata$Type == "Actual",],
+                   method = "rpart",
+                   trControl = myTimeControl,
+                   tuneLength=tuneLength.num)
+
+# rpartPredictions = predict(rpart.mod,testData )
+# totaldata$rpartOrders[totaldata$Type == "Forecast"] <- rpartPredictions
+```
+
+
+```{r}
+party.mod <- train(partyOrders ~ BlackFridayWeeks+WinterSeason+HolidayWeek+Month+MDay+Lag_1+Lag_2+Lag_3+Lag_4+Lag_5+Lag_6+Lag_7+Lag_8,
+                   data = totaldata[totaldata$Type == "Actual",],
+                   method = "ctree",
+                   trControl = myTimeControl,
+                   tuneLength=tuneLength.num)
+
+# partyPredictions = predict(party.mod,testData )
+# totaldata$partyOrders[totaldata$Type == "Forecast"] <- partyPredictions
+```
+
+
+```{r}
+rf.mod <- train(rfOrders ~ BlackFridayWeeks+WinterSeason+HolidayWeek+Month+MDay+Lag_1+Lag_2+Lag_3+Lag_4+Lag_5+Lag_6+Lag_7+Lag_8,
+                data = totaldata[totaldata$Type == "Actual",],
+                method = "rf",
+                trControl = myTimeControl,
+                tuneLength=tuneLength.num)
+
+# rfPredictions = predict(rf.mod,testData )
+# totaldata$rfOrders[totaldata$Type == "Forecast"] <- rfPredictions
+# 
+```
+
+
+
+```{r}
+
+# ### model performance ###
+# 
+# resamps <- resamples(list(glmnet = glmnet.mod,
+#                           glmnet.pois = pois.mod,
+#                           lm = lm.mod,
+#                           earth=earth.mod,
+#                           earth.pois=earth.pois.mod,
+#                           gbm=gbm.mod,
+#                           gam=gam.mod,
+#                           rf=rf.mod,
+#                           rpart=rpart.mod,
+#                           party=party.mod))
+# resamps
+# 
+# ss <- summary(resamps)
+
+for(i in (nrow(totaldata[totaldata$Type == "Actual",])+1):nrow(totaldata)){
+  
+  for(j in 1:DMNumberOfLags) {
+    #print(i)
+    totaldata[,paste("Lag_",j,sep="")] = Lag(totaldata$glmnetOrders,j)
+  } 
+  SampleX_test <- data.matrix(totaldata[i,DMcovariates])
+
+  
+  glmnetPredictions = predict(glmnet.mod,totaldata[i,DMcovariates] )
+  totaldata$glmnetOrders[i] <- glmnetPredictions
+
+  
+  for(j in 1:DMNumberOfLags) {
+    #print(i)
+    totaldata[,paste("Lag_",j,sep="")] = Lag(totaldata$glmnet.poisOrders,j)
+  } 
+  
+  glmnet.poisPredictions = exp(predict(pois.mod,totaldata[i,DMcovariates]))
+  totaldata$glmnet.poisOrders[i] <- glmnet.poisPredictions
+  
+  for(j in 1:DMNumberOfLags) {
+    #print(i)
+    totaldata[,paste("Lag_",j,sep="")] = Lag(totaldata$earthOrders,j)
+  } 
+  
+  earthPredictions = predict(earth.mod,totaldata[i,DMcovariates])
+  totaldata$earthOrders[i] <- earthPredictions
+
+
+  
+  for(j in 1:DMNumberOfLags) {
+    #print(i)
+    totaldata[,paste("Lag_",j,sep="")] = Lag(totaldata$rpartOrders,j)
+  } 
+  
+  rpartPredictions = predict(rpart.mod,totaldata[i,DMcovariates] )
+  totaldata$rpartOrders[i] <- rpartPredictions
+  
+  for(j in 1:DMNumberOfLags) {
+    #print(i)
+    totaldata[,paste("Lag_",j,sep="")] = Lag(totaldata$partyOrders,j)
+  } 
+  
+  partyPredictions = predict(party.mod,totaldata[i,DMcovariates] )
+  totaldata$partyOrders[i] <- partyPredictions
+  
+  for(j in 1:DMNumberOfLags) {
+    #print(i)
+    totaldata[,paste("Lag_",j,sep="")] = Lag(totaldata$rfOrders,j)
+  } 
+  
+  rfPredictions = predict(rf.mod,totaldata[i,DMcovariates] )
+  totaldata$rfOrders[i] <- rfPredictions
+  
+}
+
+
+forecasttrendPlot(totaldata,x = "Date",y = "glmnetOrders",TrendTitle =paste(" GLMNET - Trend and Forecast Line for ProductA",sep=""),plotfilename = "GLMNET.png",bycolor = "Type")
+forecasttrendPlot(totaldata,x = "Date",y = "earthOrders",TrendTitle =paste(" EARTH - Trend and Forecast Line for ProductA",sep=""),plotfilename = "EARTH.png",bycolor = "Type")
+forecasttrendPlot(totaldata,x = "Date",y = "rfOrders",TrendTitle =paste(" RandomForest - Trend and Forecast Line for ProductA",sep=""),plotfilename = "RandomForest.png",bycolor = "Type")
+forecasttrendPlot(totaldata,x = "Date",y = "rpartOrders",TrendTitle =paste(" RPART - Trend and Forecast Line for ProductA",sep=""),plotfilename = "RPART.png",bycolor = "Type")
+forecasttrendPlot(totaldata,x = "Date",y = "partyOrders",TrendTitle =paste(" PARTY - Trend and Forecast Line for ProductA",sep=""),plotfilename = "PARTY.png",bycolor = "Type")
+
+
+
+```
+
+
+```{r}
+library(ggplot2)
+#library(plotly)
+filePath <- paste(dirpath,'All Models_Product_A.png',sep='')
+plot = ggplot(totaldata, aes(x = Date)) + 
+  geom_line(size=1,aes(y = glmnetOrders,color = 'glmnetOrders'), position = position_dodge(0.8)) +
+  geom_line(size=1,aes(y = earthOrders,color = 'earthOrders'), position = position_dodge(0.8)) +
+  geom_line(size=1,aes(y = rfOrders,color = 'rfOrders'), position = position_dodge(0.8)) +
+  geom_line(size=1,aes(y = rpartOrders,color = 'rpartOrders'), position = position_dodge(0.8)) +
+  geom_line(size=1,aes(y = partyOrders,color = 'partyOrders'), position = position_dodge(0.8)) +
+  geom_line(size=1,aes(y = ETS,color = 'ETSOrders'), position = position_dodge(0.8)) +
+  geom_line(size=1,aes(y = NNET,color = 'NNETOrders'), position = position_dodge(0.8)) +
+  geom_line(size=1,aes(y = MAutoArima,color = 'MAutoArimaOrders'), position = position_dodge(0.8)) +
+  #geom_line(size=1,aes(y = HoltWinters,color = 'HoltsOrders'), position = position_dodge(0.8)) +
+  geom_line(size=1,aes(y = XGBoost,color = 'XGBoostOrders'), position = position_dodge(0.8)) +
+  geom_line(size=1,aes(y = Prophet,color = 'Prophet'), position = position_dodge(0.8)) +
+  ggtitle(paste('Forecasts from different models - Product A ', collapse = '\n'))+
+  theme(plot.title = element_text(size = 12, face = 'bold',hjust = 0.5))+
+  # scale_colour_manual(Values = c(glmnetOrders = '#999999', earthOrders='#E69F00', rfOrders= '#F0E442',rpartOrders= '#0072B2', partyOrders='#D55E00', ETS='#CC79A7',NNET='#CC6666', MAutoArima='#9999CC',HoltWinters= '#66CC99',XGBoost='grey',Prophet='pink')) +
+  ggsave(filePath,plot = last_plot(), dpi = 600,limitsize = TRUE,height = 10 , width = 10 * 1.5)
+
+print(plot)
+
+
+```
+
+
+
+
+# Ensemble of selected models
+```{r}
+for (i in 1:nrow(totaldata)) {
+totaldata$EnsembleForecast[i] = mean(c(totaldata$MAutoArima[i],totaldata$NNET[i],totaldata$XGBoost[i],totaldata$Prophet[i],totaldata$ETS[i],totaldata$glmnetOrders[i],totaldata$partyOrders[i],totaldata$rfOrders[i],totaldata$rpartOrders[i],totaldata$earthOrders[i]),na.rm =TRUE)
+}
+
+
+filePath = paste(dirpath,"Ensemble.png",sep="")
+# Area plot
+plot = ggplot(totaldata, aes(x = Date, y = EnsembleForecast)) + 
+  geom_line(aes(color = Type), 
+            alpha = 1, position = position_dodge(0.8)) +
+  ggtitle(paste("Ensemble- Trend and Forecast Line for Series for DataA ",sep=""))+
+  # scale_color_manual(Orderss = c("#00AFBB", "#E7B800")) +
+  # scale_fill_manual(Orderss = c("#00AFBB", "#E7B800")) +
+  ggsave(filePath,plot = last_plot(), dpi = 600,limitsize = TRUE,height = 7 , width = 7 * 1.5)
+print(plot)
+
+```
+
+## Optimization of Inventory
+## Key Assumptions
+1. Assuming
+
+```{r}
+
+FinalData <- totaldata[,c("Date","Type","EnsembleForecast")]
+FinalData$EnsembleForecast <- round(FinalData$EnsembleForecast,0)
+FinalData$Orders[FinalData$Type=="Actual"] <- round(dataA$ActualOrders,0)
+FinalData$Inventory[FinalData$Type=="Actual"] <- dataA$Inventory
+FinalData$Cart_Adds[FinalData$Type=="Actual"] <- dataA$Cart_Adds
+FinalData$Views[FinalData$Type=="Actual"] <- dataA$Views
+
+
+FinalData$Orders[FinalData$Type=="Forecast"] <- 0
+FinalData$Inventory[FinalData$Type=="Forecast"] <- 0
+FinalData$Cart_Adds[FinalData$Type=="Forecast"] <- 0
+FinalData$Views[FinalData$Type=="Forecast"] <- 0
+
+FinalData[is.na(FinalData)] <- 0
+
+
+FinalData$Inventory_StartOfWeek[FinalData$Type=="Actual"] <- FinalData$Orders[FinalData$Type=="Actual"] + FinalData$Inventory[FinalData$Type=="Actual"]
+
+
+
+
+FinalData$InventoryReplenished <-0
+
+for(i in 1:nrow(FinalData)){
+  
+  if (FinalData$Type[i] =="Actual" & (i >1)){
+    FinalData$InventoryReplenished[i] =  FinalData$Inventory_StartOfWeek[i]-FinalData$Inventory[i-1]
+    
+  }
+  
+  else if (FinalData$Type[i] == "Forecast"){
+    
+  FinalData$Orders[i] = FinalData$EnsembleForecast[i]
+  #IdealInventory = mean(FinalData$EnsembleForecast[(i-4):(i-1)]) * (1+BufferInventory)
+  IdealInventory = FinalData$EnsembleForecast[i] * (1+BufferInventory)
+  
+  if ( FinalData$Inventory[i-1] >= IdealInventory){
+    FinalData$InventoryReplenished[i]=0
+  }
+  else if(FinalData$Inventory[i-1] < IdealInventory){
+    ExtraInventoryNeeded= ( IdealInventory-FinalData$Inventory[i-1] )
+    if((ExtraInventoryNeeded %% MinimumOrderQuantity) > 0.0){
+      BlocksOf50<- round((ExtraInventoryNeeded%/%MinimumOrderQuantity)+1,0)
+    }
+    else{
+    BlocksOf50<- round(ExtraInventoryNeeded%/%MinimumOrderQuantity,0)  
+    }
+    
+    FinalData$InventoryReplenished[i] = BlocksOf50 * 50
+  } 
+  
+  FinalData$Inventory[i] <- FinalData$InventoryReplenished[i]+FinalData$Inventory[i-1] - FinalData$Orders[i]
+  
+  }
+}
+
+# AverageCartAddsToOrdersRatio= mean(dataA$EnsembleForecast/dataA$Cart_Adds,na.rm = TRUE)
+# AverageViewsToOrdersRatio= mean(dataA$EnsembleForecast/dataA$Views,na.rm = TRUE)
+# 
+# print(AverageCartAddsToOrdersRatio)
+# print(AverageViewsToOrdersRatio)
+filePath <- paste(dirpath, 'OF&IS.png',sep='')
+plot = ggplot(FinalData, aes(x = Date)) + 
+  geom_line(size=1,aes(y = Orders,color = "Orders"), position = position_dodge(0.8)) +
+  geom_line(size=1,aes(y = InventoryReplenished,color = "InventoryReplenished"), position = position_dodge(0.8)) +
+  geom_vline(xintercept=as.numeric(max(FinalData$Date[FinalData$Type=="Actual"])), linetype=4)+
+  ggtitle(paste("Orders Forecast & Inventory Schedule", collapse = '\n'))+
+  theme(plot.title = element_text(size = 12, face = 'bold',hjust = 0.5))+
+  ggsave(filePath,plot = last_plot(), dpi = 600,limitsize = TRUE,height = 10 , width = 10 * 1.5)
+
+print(plot)
+
+```
+
+
+```{r}
+write.csv(FinalData, paste(dirpath,"Product_A.csv",sep=""), row.names=FALSE)
+```
