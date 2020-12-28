@@ -41,8 +41,9 @@ Inventory scheduler project assignment
 2. Have external variables with column names like (EventType,	From,	To)
 3. Open cmd in windows and run the below command to run the code ( Must need : R & internet connection to install required packages)
 
->Rscript <config.R filepath> <InputFilePath>   <TestForecastUnits>   <DMNumberOfLags> 	<BufferInventory> 	<MinimumOrderQuantity>  <ExternalEventpath>
-
+```cmd
+Rscript <config.R filepath> <InputFilePath>  <TestForecastUnits>   <DMNumberOfLags> 	<BufferInventory> <MinimumOrderQuantity>  <ExternalEventpath>
+```
 ### Example
 
   InputFilePath = "..../DataScienceAssignment.xlsx"
