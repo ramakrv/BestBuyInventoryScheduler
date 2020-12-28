@@ -1,5 +1,8 @@
 # BestBuyInventoryScheduler
 Inventory scheduler
+## System Specifications
+	1. R Version = R version 4.0.3 (2020-10-10)
+	2. OS: Windows
 ## Objective
 	1.Analysis to forecast the orders at product level, so as to guide the Inventory Analysts in Inventory replenishment.
 ## Assumptions
