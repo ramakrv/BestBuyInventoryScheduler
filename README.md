@@ -27,7 +27,7 @@ Inventory scheduler project assignment
 	7. Based on the forecast, Inventory needed to be replenished is estimated
 	8. Plot and save results
 ## Code WorkFlow
-### Auxiliary Functions\
+### Auxiliary Functions
  	Below codes have functions which help us to do the analysis for the given problem
 	1.  requirements.R :Loading libraries in to the environment
 	2.  DataUtils.R :plotForecastErrors,  trendplot,  forecasttrendplot,  loadtestdata, loaddata, AddExternalVariables
