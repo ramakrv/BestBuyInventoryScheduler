@@ -35,7 +35,8 @@ Inventory scheduler project assignment
   	3.  ModelFunctions.R :ForecastForNextDay,  FitGlmnet,  FItGlmnet.pois,  Fitearth,  Fitrpart,,  Fitrf,,  FitProphet,  FitETS,,  FitNNET,,  FitXGBoost,  FitAutoArima,  FitHoltWinters
 ### Main Function
 	1. Consists of calling all the auxiliary functions to have outputs of different forecasting models
-	
+### BestBuyInventory.RMD file 
+	1. It is the worksheet which is used to do the analysis
 ### Running the code
 1. Have data with given column Names (week,	product,	orders,	brand,	views,	cart_adds,	price,	inventory)
 2. Have external variables with column names like (EventType,	From,	To)
