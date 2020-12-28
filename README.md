@@ -53,3 +53,7 @@ Inventory scheduler project assignment
   ExtEventPath = "..../HolidayData.csv"
 
   
+## Outputs
+	1. Outputs of the analysis are saved in the "<DirPath of the input filepath>/Output/ProductA/"
+	2. Output file ProductA.csv consists of the schedule of Inventory repenishment
+	3. All the plots generated using each model, ensembled and final inventory schedule can also be found at the same location
